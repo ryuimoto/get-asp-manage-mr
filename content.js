@@ -43,7 +43,9 @@
   const TRAILING_COLUMNS = ["サイトの紹介"];
 
   try {
-    log("start");
+    const { debugMode: debugModeRaw } = await chrome.storage.local.get(["debugMode"]);
+    const debugMode = !!debugModeRaw;
+    log("start", debugMode ? "(debug mode)" : "");
 
     // === 0. 対象ページかチェック ===
     if (!/\/manage\/bill_index/.test(location.pathname)) {
@@ -73,36 +75,44 @@
     const allRows = []; // { 列名: 値 } の配列
     const seenKeys = new Set();
 
-    for (const t of firstCards) {
-      const row = parseAdvCard(t);
-      allRows.push(row);
-      Object.keys(row).forEach((k) => seenKeys.add(k));
-    }
-
-    // === 3. ページャ解析 ===
-    const pager = analyzePager(document);
-    log(`first page parsed. cards=${firstCards.length}, totalPages=${pager.totalPages}`);
-
-    // === 4. 2ページ目以降を fetch ===
-    for (let p = 2; p <= pager.totalPages; p++) {
-      sendProgress(`${p}/${pager.totalPages}`);
-      const url = pager.urlFor(p);
-      const html = await fetchHtml(url);
-      const doc = new DOMParser().parseFromString(html, "text/html");
-
-      if (isLoginPage(doc)) {
-        throw new Error("セッションが切れた可能性があります。再ログインしてやり直してください。");
-      }
-
-      const cards = doc.querySelectorAll("table.advtable2");
-      log(`page ${p}: cards=${cards.length}`);
-      for (const t of cards) {
+    if (debugMode) {
+      // デバッグモード: 先頭1件のみ残してページャ巡回はスキップ
+      const first = parseAdvCard(firstCards[0]);
+      allRows.push(first);
+      Object.keys(first).forEach((k) => seenKeys.add(k));
+      log("debug mode: 1件のみで終了");
+    } else {
+      for (const t of firstCards) {
         const row = parseAdvCard(t);
         allRows.push(row);
         Object.keys(row).forEach((k) => seenKeys.add(k));
       }
 
-      await sleep(FETCH_INTERVAL_MS);
+      // === 3. ページャ解析 ===
+      const pager = analyzePager(document);
+      log(`first page parsed. cards=${firstCards.length}, totalPages=${pager.totalPages}`);
+
+      // === 4. 2ページ目以降を fetch ===
+      for (let p = 2; p <= pager.totalPages; p++) {
+        sendProgress(`${p}/${pager.totalPages}`);
+        const url = pager.urlFor(p);
+        const html = await fetchHtml(url);
+        const doc = new DOMParser().parseFromString(html, "text/html");
+
+        if (isLoginPage(doc)) {
+          throw new Error("セッションが切れた可能性があります。再ログインしてやり直してください。");
+        }
+
+        const cards = doc.querySelectorAll("table.advtable2");
+        log(`page ${p}: cards=${cards.length}`);
+        for (const t of cards) {
+          const row = parseAdvCard(t);
+          allRows.push(row);
+          Object.keys(row).forEach((k) => seenKeys.add(k));
+        }
+
+        await sleep(FETCH_INTERVAL_MS);
+      }
     }
 
     // === 5. 列順を決定 ===
@@ -124,7 +134,7 @@
     chrome.runtime.sendMessage({
       type: "DOWNLOAD_CSV",
       csv,
-      filename: makeFilename(),
+      filename: makeFilename(debugMode),
     });
   } catch (e) {
     console.error("[rentracks-scraper]", e);
@@ -281,7 +291,7 @@
     return s;
   }
 
-  function makeFilename() {
+  function makeFilename(debugMode) {
     const kw = document.querySelector('input[name="idKeyword"]')?.value?.trim() || "";
     const safeKw = kw.replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
     const d = new Date();
@@ -292,7 +302,8 @@
       "_" +
       String(d.getHours()).padStart(2, "0") +
       String(d.getMinutes()).padStart(2, "0");
-    const base = safeKw ? `rentracks_${safeKw}_${ts}` : `rentracks_bill_index_${ts}`;
+    const suffix = debugMode ? "_debug" : "";
+    const base = safeKw ? `rentracks_${safeKw}_${ts}${suffix}` : `rentracks_bill_index_${ts}${suffix}`;
     return `${base}.csv`;
   }
 

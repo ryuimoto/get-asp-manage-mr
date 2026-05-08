@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Rentracks 案件一覧</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      margin: 0;
+      padding: 14px 16px;
+      width: 240px;
+    }
+    h1 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0 0 12px;
+      color: #333;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .row label {
+      cursor: pointer;
+      user-select: none;
+    }
+    .hint {
+      color: #888;
+      font-size: 11px;
+      margin: -8px 0 12px 22px;
+    }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      background: #2980b9;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #2471a3; }
+    button:active { background: #1f618d; }
+  </style>
+</head>
+<body>
+  <h1>Rentracks 案件一覧</h1>
+  <div class="row">
+    <input type="checkbox" id="debugMode">
+    <label for="debugMode">デバッグモード(1件のみCSV)</label>
+  </div>
+  <div class="hint">ON のとき1ページ目の先頭1件だけ出力</div>
+  <button id="run">CSV取得</button>
+  <script src="popup.js"></script>
+</body>
+</html>

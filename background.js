@@ -1,6 +1,6 @@
 // background.js
 // 役割:
-//   1. ツールバーアイコンのクリックで content.js を対象タブに注入する
+//   1. popup の「CSV取得」ボタンから START_SCRAPE を受けて content.js を注入する
 //   2. content.js から送られてきた CSV 文字列をダウンロードする
 //   3. 進捗・エラーをバッジで表示する
 //
@@ -9,31 +9,40 @@
 
 const TARGET_URL_RE = /^https:\/\/manage\.rentracks\.jp\/manage\/bill_index/;
 
-chrome.action.onClicked.addListener(async (tab) => {
+async function startScrape(tabId) {
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (e) {
+    return;
+  }
   if (!tab || !tab.url || !TARGET_URL_RE.test(tab.url)) {
-    await flashBadge(tab?.id, "NG", "#c0392b");
+    await flashBadge(tabId, "NG", "#c0392b");
     return;
   }
 
   try {
-    await chrome.action.setBadgeBackgroundColor({ color: "#2980b9", tabId: tab.id });
-    await chrome.action.setBadgeText({ text: "...", tabId: tab.id });
+    await chrome.action.setBadgeBackgroundColor({ color: "#2980b9", tabId });
+    await chrome.action.setBadgeText({ text: "...", tabId });
 
-    // content.js を注入。content.js 側で全ページ巡回 → CSV 生成し、
-    // chrome.runtime.sendMessage で {type:"DOWNLOAD_CSV", csv, filename} を送ってくる
     await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
+      target: { tabId },
       files: ["content.js"],
     });
   } catch (e) {
     console.error("[rentracks-scraper] inject failed:", e);
-    await flashBadge(tab.id, "ERR", "#c0392b");
+    await flashBadge(tabId, "ERR", "#c0392b");
   }
-});
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg !== "object") return;
   const tabId = sender?.tab?.id;
+
+  if (msg.type === "START_SCRAPE") {
+    startScrape(msg.tabId);
+    return;
+  }
 
   if (msg.type === "PROGRESS") {
     chrome.action.setBadgeBackgroundColor({ color: "#2980b9", tabId });
