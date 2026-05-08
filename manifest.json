@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Rentracks 広告案件 一覧取得",
+  "version": "0.1.0",
+  "description": "manage.rentracks.jp の検索結果を全ページ巡回して CSV ダウンロード",
+  "permissions": ["activeTab", "scripting", "downloads"],
+  "host_permissions": ["https://manage.rentracks.jp/*"],
+  "action": {
+    "default_title": "Rentracks 案件一覧を CSV でダウンロード"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
