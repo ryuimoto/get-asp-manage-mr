@@ -45,6 +45,17 @@
     }
     button:hover { background: #2471a3; }
     button:active { background: #1f618d; }
+    .footer {
+      margin-top: 12px;
+      text-align: right;
+    }
+    .footer a {
+      color: #2980b9;
+      font-size: 11px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -55,6 +66,10 @@
   </div>
   <div class="hint">ON のとき1ページ目の先頭1件だけ出力</div>
   <button id="run">CSV取得</button>
+  <div class="footer">
+    <a id="openOptions">設定</a>
+  </div>
+  <script src="idb.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Rentracks 案件一覧 設定</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: #333;
+      max-width: 560px;
+      margin: 32px auto;
+      padding: 0 20px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 24px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ddd;
+    }
+    .section {
+      margin-bottom: 28px;
+    }
+    .field-label {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .current {
+      padding: 10px 12px;
+      background: #f7f9fb;
+      border: 1px solid #e0e6eb;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #444;
+      margin-bottom: 10px;
+    }
+    .current strong {
+      color: #2980b9;
+    }
+    .current.empty {
+      color: #888;
+      font-style: italic;
+    }
+    .help {
+      color: #888;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .help code {
+      background: #f4f4f4;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      background: #2980b9;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: #2471a3; }
+    button:active { background: #1f618d; }
+    button.secondary {
+      color: #2980b9;
+      background: #fff;
+      border: 1px solid #2980b9;
+      font-weight: 500;
+    }
+    button.secondary:hover { background: #f0f7fb; }
+    button.secondary:active { background: #e1eef7; }
+    .status {
+      font-size: 12px;
+    }
+    .status.ok { color: #27ae60; }
+    .status.err { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <h1>Rentracks 案件一覧 設定</h1>
+
+  <div class="section">
+    <div class="field-label">CSV 保存先フォルダ</div>
+    <div class="current" id="current"></div>
+    <div class="actions">
+      <button id="pickFolder">フォルダを選択…</button>
+      <button class="secondary" id="clearFolder">クリア</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="help">
+      任意のフォルダ(例: <code>~/Desktop/</code>、<code>~/Documents/</code> など)を選択できます。Chrome の File System Access 経由で書き込むため、<strong>Downloads 以外の場所</strong>にもダイアログ無しで保存されます。<br>
+      クリアすると毎回保存ダイアログが開く動作に戻ります。<br>
+      <strong>制約</strong>: ホームディレクトリ直下や <code>~/Library</code> など Chrome がブロックする「機微なフォルダ」は選択できません(その場合は別のフォルダを選んでください)。ブラウザを再起動すると保存先フォルダへのアクセス権限が失われ、CSV取得時に再付与の確認が出ます。
+    </div>
+  </div>
+
+  <script src="idb.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
