@@ -13,6 +13,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const preview = document.getElementById("subfolderPreview");
   const status = document.getElementById("subfolderStatus");
 
+  // schedule section
+  const scheduleEnabled = document.getElementById("scheduleEnabled");
+  const scheduleTime = document.getElementById("scheduleTime");
+  const scheduleSaveBtn = document.getElementById("scheduleSave");
+  const schedulePreview = document.getElementById("schedulePreview");
+  const scheduleStatus = document.getElementById("scheduleStatus");
+
   const { saveSubfolder } = await chrome.storage.local.get(["saveSubfolder"]);
   input.value = saveSubfolder || "";
   updatePreview();
@@ -38,8 +45,57 @@ document.addEventListener("DOMContentLoaded", async () => {
     input.value = "";
     await chrome.storage.local.set({ saveSubfolder: "" });
     updatePreview();
-    setStatus("クリアしました(以降は保存ダイアログを表示)", "ok");
+    setStatus("クリアしました(~/Downloads/ 直下に保存)", "ok");
   });
+
+  // === schedule ===
+  const { schedule } = await chrome.storage.local.get(["schedule"]);
+  if (schedule) {
+    scheduleEnabled.checked = !!schedule.enabled;
+    if (schedule.time) scheduleTime.value = schedule.time;
+  }
+  updateSchedulePreview();
+
+  scheduleEnabled.addEventListener("change", updateSchedulePreview);
+  scheduleTime.addEventListener("input", updateSchedulePreview);
+
+  scheduleSaveBtn.addEventListener("click", async () => {
+    const value = scheduleTime.value;
+    if (!/^\d{2}:\d{2}$/.test(value)) {
+      setScheduleStatus("時刻の形式が不正です", "err");
+      return;
+    }
+    await chrome.storage.local.set({
+      schedule: { enabled: scheduleEnabled.checked, time: value },
+    });
+    updateSchedulePreview();
+    setScheduleStatus("保存しました", "ok");
+  });
+
+  function updateSchedulePreview() {
+    if (!scheduleEnabled.checked) {
+      schedulePreview.innerHTML = "自動実行: <strong>無効</strong>";
+      return;
+    }
+    const value = scheduleTime.value;
+    if (!/^\d{2}:\d{2}$/.test(value)) {
+      schedulePreview.innerHTML = "";
+      return;
+    }
+    const next = new Date(computeNextFire(value));
+    const wd = "日月火水木金土"[next.getDay()];
+    const yyyy = next.getFullYear();
+    const mm = String(next.getMonth() + 1).padStart(2, "0");
+    const dd = String(next.getDate()).padStart(2, "0");
+    const hh = String(next.getHours()).padStart(2, "0");
+    const mi = String(next.getMinutes()).padStart(2, "0");
+    schedulePreview.innerHTML = `次回実行: <strong>${yyyy}-${mm}-${dd} (${wd}) ${hh}:${mi}</strong>`;
+  }
+
+  function setScheduleStatus(text, kind) {
+    scheduleStatus.textContent = text;
+    scheduleStatus.className = "status" + (kind ? ` ${kind}` : "");
+  }
 
   function updatePreview() {
     const result = normalizeSubfolder(input.value);
@@ -48,7 +104,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     if (!result.value) {
-      preview.innerHTML = "保存先: <strong>毎回ダイアログを表示</strong>";
+      preview.innerHTML = "保存先: <strong>~/Downloads/</strong>(サブフォルダ無し)";
       return;
     }
     preview.innerHTML = `保存先: <strong>~/Downloads/${escapeHtml(result.value)}/</strong>`;
@@ -87,4 +143,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
+}
+
+function computeNextFire(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(h, m, 0, 0);
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+  return next.getTime();
 }

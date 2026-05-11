@@ -16,6 +16,19 @@ chrome.storage.session
   .setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" })
   .catch((e) => console.warn("[rentracks-scraper] setAccessLevel failed:", e));
 
+// SW 起動時にスケジュールから chrome.alarms を再構築する。
+applySchedule();
+
+// options 画面でスケジュールが変更されたら alarm を再設定する。
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.schedule) applySchedule();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "dailyScrape") return;
+  runScheduledScrape();
+});
+
 async function startScrape(tabId) {
   let tab;
   try {
@@ -67,6 +80,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "ERROR") {
     console.warn("[rentracks-scraper] content error:", msg.error);
     flashBadge(tabId, "ERR", "#c0392b");
+    notifyIfScheduled("error", msg.error || "(エラー詳細不明)");
     return;
   }
 });
@@ -82,26 +96,114 @@ function saveCsv(csv, baseName, tabId) {
   // BOM 付き UTF-8 で保存する
   const csvWithBom = "﻿" + csv;
 
-  // saveSubfolder 設定があれば ~/Downloads/<saveSubfolder>/<baseName> にダイアログ無しで保存。
-  // 未設定なら saveAs:true で保存ダイアログ。
+  // 常にダイアログ無しで ~/Downloads/ 配下に直接保存(同名は Chrome が連番付与)。
+  // saveSubfolder 設定があれば ~/Downloads/<saveSubfolder>/<baseName>、未設定なら ~/Downloads/<baseName>。
   chrome.storage.local.get(["saveSubfolder"], ({ saveSubfolder }) => {
     const subfolder = (saveSubfolder || "").trim();
     const filename = subfolder ? `${subfolder}/${baseName}` : baseName;
-    const saveAs = !subfolder;
     const dataUrl =
       "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
 
     chrome.downloads.download(
-      { url: dataUrl, filename, saveAs },
+      { url: dataUrl, filename, saveAs: false },
       (downloadId) => {
         if (chrome.runtime.lastError || downloadId == null) {
           console.error("[rentracks-scraper] download failed:", chrome.runtime.lastError);
           flashBadge(tabId, "ERR", "#c0392b");
+          notifyIfScheduled("error", "CSV のダウンロードに失敗しました");
           return;
         }
         chrome.action.setBadgeText({ text: "OK", tabId });
         setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
+        notifyIfScheduled("ok", `CSV を保存しました: ${filename}`);
       }
     );
   });
+}
+
+// ============ スケジュール実行 ============
+
+function computeNextFire(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(h, m, 0, 0);
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+  return next.getTime();
+}
+
+async function applySchedule() {
+  try {
+    await chrome.alarms.clear("dailyScrape");
+    const { schedule } = await chrome.storage.local.get(["schedule"]);
+    if (!schedule?.enabled || !schedule?.time) return;
+    const fireAt = computeNextFire(schedule.time);
+    await chrome.alarms.create("dailyScrape", { when: fireAt });
+    console.log("[rentracks-scraper] alarm scheduled at", new Date(fireAt).toString());
+  } catch (e) {
+    console.warn("[rentracks-scraper] applySchedule failed:", e);
+  }
+}
+
+async function runScheduledScrape() {
+  try {
+    console.log("[rentracks-scraper] scheduled scrape firing");
+    let tabs = await chrome.tabs.query({
+      url: "https://manage.rentracks.jp/manage/bill_index*",
+    });
+    let tabId;
+    if (tabs.length > 0) {
+      tabId = tabs[0].id;
+    } else {
+      const tab = await chrome.tabs.create({
+        url: "https://manage.rentracks.jp/manage/bill_index/index",
+        active: false,
+      });
+      tabId = tab.id;
+      await waitForTabComplete(tabId);
+    }
+    await chrome.storage.session.set({ scheduledRunPending: true });
+    startScrape(tabId);
+  } catch (e) {
+    console.error("[rentracks-scraper] scheduled scrape failed:", e);
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: "Rentracks 自動取得 失敗",
+      message: String(e?.message || e),
+    });
+  } finally {
+    // 発火後に次回時刻を再スケジュール(drift 防止)
+    applySchedule();
+  }
+}
+
+function waitForTabComplete(tabId) {
+  return new Promise((resolve) => {
+    const listener = (id, changeInfo) => {
+      if (id === tabId && changeInfo.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+async function notifyIfScheduled(kind, message) {
+  try {
+    const { scheduledRunPending } = await chrome.storage.session.get([
+      "scheduledRunPending",
+    ]);
+    if (!scheduledRunPending) return;
+    await chrome.storage.session.set({ scheduledRunPending: false });
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: kind === "ok" ? "Rentracks 自動取得 完了" : "Rentracks 自動取得 失敗",
+      message: String(message || ""),
+    });
+  } catch (e) {
+    console.warn("[rentracks-scraper] notifyIfScheduled failed:", e);
+  }
 }

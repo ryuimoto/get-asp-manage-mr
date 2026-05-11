@@ -85,6 +85,17 @@
     }
     button.secondary:hover { background: #f0f7fb; }
     button.secondary:active { background: #e1eef7; }
+    .schedule-countdown {
+      margin-top: 10px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #555;
+      background: #f5f8fa;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .schedule-countdown strong { color: #2980b9; }
+    .countdown-remaining { color: #888; margin-left: 4px; }
   </style>
 </head>
 <body>
@@ -97,6 +108,10 @@
     </div>
     <div class="hint">ON のとき1ページ目の先頭1件だけ出力</div>
     <button id="run">CSV取得</button>
+    <div id="scheduleCountdown" class="schedule-countdown" hidden>
+      次回自動実行: <strong id="scheduleCountdownTime"></strong>
+      <span class="countdown-remaining" id="scheduleCountdownRemaining"></span>
+    </div>
     <div class="footer">
       <a id="openOptions">設定</a>
     </div>

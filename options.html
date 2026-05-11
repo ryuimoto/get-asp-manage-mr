@@ -107,10 +107,35 @@
     <div class="preview" id="subfolderPreview"></div>
     <div class="help">
       <code>~/Downloads/&lt;入力値&gt;/</code> にダイアログ無しで保存します。<br>
-      空欄のときは毎回保存ダイアログが開きます。<br>
+      <strong>空欄なら <code>~/Downloads/</code> 直下に保存</strong>(サブフォルダ無し)。<br>
       使えない文字: <code>\</code> <code>:</code> <code>*</code> <code>?</code> <code>"</code> <code>&lt;</code> <code>&gt;</code> <code>|</code> /
       <code>..</code> による親階層遡及も不可。<br>
-      <strong>注</strong>: Chrome 拡張は <code>~/Downloads/</code> 外には保存できません(Chrome のセキュリティ仕様)。Desktop や Documents 等に保存したい場合は、保存後に Finder で移動するか、保存ダイアログから手動で選んでください。
+      <strong>注</strong>: Chrome 拡張は <code>~/Downloads/</code> 外には保存できません(Chrome のセキュリティ仕様)。Desktop や Documents 等に保存したい場合は、保存後に Finder で移動してください。
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="field-label">自動実行スケジュール</div>
+    <div class="row" style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+      <input type="checkbox" id="scheduleEnabled">
+      <label for="scheduleEnabled" style="cursor:pointer;user-select:none;">毎日自動で CSV取得 を実行する</label>
+    </div>
+    <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <label for="scheduleTime">実行時刻:</label>
+      <input type="time" id="scheduleTime" value="09:00" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;">
+    </div>
+    <div class="actions">
+      <button id="scheduleSave">保存</button>
+      <span class="status" id="scheduleStatus"></span>
+    </div>
+    <div class="preview" id="schedulePreview"></div>
+    <div class="help">
+      <strong>制約</strong>:<br>
+      ・Chrome が起動していない時刻は発火しません(次回 Chrome 起動時に 1 回だけ遅延発火します)<br>
+      ・Rentracks にログイン済みである必要があります(セッション切れ時はエラー通知)<br>
+      ・bill_index タブがなければ自動でバックグラウンドで開きます<br>
+      ・OS の通知許可が必要です。macOS なら「システム設定 → 通知 → Google Chrome」で確認<br>
+      ・<strong>デバッグモードが ON のままだと自動実行も 1 件しか取りません</strong>(popup でチェックを外しておく)
     </div>
   </div>
 
