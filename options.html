@@ -27,21 +27,25 @@
       font-weight: 600;
       margin-bottom: 6px;
     }
-    .current {
-      padding: 10px 12px;
-      background: #f7f9fb;
-      border: 1px solid #e0e6eb;
-      border-radius: 4px;
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
       font-size: 13px;
-      color: #444;
-      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
-    .current strong {
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #2980b9;
+    }
+    .preview {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #555;
+    }
+    .preview strong {
       color: #2980b9;
-    }
-    .current.empty {
-      color: #888;
-      font-style: italic;
     }
     .help {
       color: #888;
@@ -93,21 +97,23 @@
   <h1>Rentracks 案件一覧 設定</h1>
 
   <div class="section">
-    <div class="field-label">CSV 保存先フォルダ</div>
-    <div class="current" id="current"></div>
+    <div class="field-label">CSV 保存先サブフォルダ(Downloads 配下)</div>
+    <input type="text" id="saveSubfolder" placeholder="rentracks" autocomplete="off">
     <div class="actions">
-      <button id="pickFolder">フォルダを選択…</button>
-      <button class="secondary" id="clearFolder">クリア</button>
-      <span class="status" id="status"></span>
+      <button id="saveSubfolderBtn">保存</button>
+      <button class="secondary" id="clearSubfolderBtn">クリア</button>
+      <span class="status" id="subfolderStatus"></span>
     </div>
+    <div class="preview" id="subfolderPreview"></div>
     <div class="help">
-      任意のフォルダ(例: <code>~/Desktop/</code>、<code>~/Documents/</code> など)を選択できます。Chrome の File System Access 経由で書き込むため、<strong>Downloads 以外の場所</strong>にもダイアログ無しで保存されます。<br>
-      クリアすると毎回保存ダイアログが開く動作に戻ります。<br>
-      <strong>制約</strong>: ホームディレクトリ直下や <code>~/Library</code> など Chrome がブロックする「機微なフォルダ」は選択できません(その場合は別のフォルダを選んでください)。ブラウザを再起動すると保存先フォルダへのアクセス権限が失われ、CSV取得時に再付与の確認が出ます。
+      <code>~/Downloads/&lt;入力値&gt;/</code> にダイアログ無しで保存します。<br>
+      空欄のときは毎回保存ダイアログが開きます。<br>
+      使えない文字: <code>\</code> <code>:</code> <code>*</code> <code>?</code> <code>"</code> <code>&lt;</code> <code>&gt;</code> <code>|</code> /
+      <code>..</code> による親階層遡及も不可。<br>
+      <strong>注</strong>: Chrome 拡張は <code>~/Downloads/</code> 外には保存できません(Chrome のセキュリティ仕様)。Desktop や Documents 等に保存したい場合は、保存後に Finder で移動するか、保存ダイアログから手動で選んでください。
     </div>
   </div>
 
-  <script src="idb.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

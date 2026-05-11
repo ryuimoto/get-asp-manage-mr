@@ -56,20 +56,59 @@
       cursor: pointer;
     }
     .footer a:hover { text-decoration: underline; }
+    .progress-status {
+      font-size: 12px;
+      color: #333;
+      margin-bottom: 8px;
+      text-align: center;
+      min-height: 18px;
+    }
+    .progress-status.error { color: #c0392b; }
+    .progress-status.done { color: #27ae60; font-weight: 600; }
+    progress {
+      width: 100%;
+      height: 10px;
+      margin-bottom: 6px;
+    }
+    .progress-detail {
+      font-size: 11px;
+      color: #888;
+      text-align: center;
+      min-height: 14px;
+      margin-bottom: 12px;
+    }
+    button.secondary {
+      color: #2980b9;
+      background: #fff;
+      border: 1px solid #2980b9;
+      font-weight: 500;
+    }
+    button.secondary:hover { background: #f0f7fb; }
+    button.secondary:active { background: #e1eef7; }
   </style>
 </head>
 <body>
   <h1>Rentracks 案件一覧</h1>
-  <div class="row">
-    <input type="checkbox" id="debugMode">
-    <label for="debugMode">デバッグモード(1件のみCSV)</label>
+
+  <div id="formSection">
+    <div class="row">
+      <input type="checkbox" id="debugMode">
+      <label for="debugMode">デバッグモード(1件のみCSV)</label>
+    </div>
+    <div class="hint">ON のとき1ページ目の先頭1件だけ出力</div>
+    <button id="run">CSV取得</button>
+    <div class="footer">
+      <a id="openOptions">設定</a>
+    </div>
   </div>
-  <div class="hint">ON のとき1ページ目の先頭1件だけ出力</div>
-  <button id="run">CSV取得</button>
-  <div class="footer">
-    <a id="openOptions">設定</a>
+
+  <div id="progressSection" hidden>
+    <div class="progress-status" id="progressStatus">開始中…</div>
+    <progress id="progressBar" max="100"></progress>
+    <div class="progress-detail" id="progressDetail"></div>
+    <button id="progressClose" class="secondary">閉じる</button>
   </div>
-  <script src="idb.js"></script>
+
   <script src="popup.js"></script>
 </body>
 </html>

@@ -7,9 +7,14 @@
 // fetch / HTML パース / CSV 生成は全て content.js（ページ context）側で行う。
 // MV3 Service Worker では DOMParser が使えないため。
 
-importScripts("idb.js");
-
 const TARGET_URL_RE = /^https:\/\/manage\.rentracks\.jp\/manage\/bill_index/;
+
+// content script(chrome.scripting.executeScript で注入される untrusted context)
+// から chrome.storage.session を読み書きできるよう、アクセスレベルを明示する。
+// これを設定しないと content.js の setScrapeStatus が silent に拒否され、popup の進捗バーが「開始中…」のまま固まる。
+chrome.storage.session
+  .setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" })
+  .catch((e) => console.warn("[rentracks-scraper] setAccessLevel failed:", e));
 
 async function startScrape(tabId) {
   let tab;
@@ -73,49 +78,30 @@ async function flashBadge(tabId, text, color) {
   setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2500);
 }
 
-async function saveCsv(csv, baseName, tabId) {
+function saveCsv(csv, baseName, tabId) {
   // BOM 付き UTF-8 で保存する
   const csvWithBom = "﻿" + csv;
 
-  // FSA ハンドルが永続化されていればそこに直接書き込む
-  try {
-    const handle = await idbGetSaveFolder();
-    if (handle) {
-      const perm = await handle.queryPermission({ mode: "readwrite" });
-      if (perm === "granted") {
-        try {
-          const fileHandle = await handle.getFileHandle(baseName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(new Blob([csvWithBom], { type: "text/csv;charset=utf-8" }));
-          await writable.close();
-          chrome.action.setBadgeText({ text: "OK", tabId });
-          setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
-          return;
-        } catch (e) {
-          console.error("[rentracks-scraper] FSA write failed:", e);
-          // 書き込みに失敗したら下のフォールバックへ
-        }
-      } else {
-        console.warn("[rentracks-scraper] FSA permission not granted:", perm);
-      }
-    }
-  } catch (e) {
-    console.warn("[rentracks-scraper] FSA path skipped:", e);
-  }
+  // saveSubfolder 設定があれば ~/Downloads/<saveSubfolder>/<baseName> にダイアログ無しで保存。
+  // 未設定なら saveAs:true で保存ダイアログ。
+  chrome.storage.local.get(["saveSubfolder"], ({ saveSubfolder }) => {
+    const subfolder = (saveSubfolder || "").trim();
+    const filename = subfolder ? `${subfolder}/${baseName}` : baseName;
+    const saveAs = !subfolder;
+    const dataUrl =
+      "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
 
-  // フォールバック: chrome.downloads で保存ダイアログを表示
-  const dataUrl =
-    "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
-  chrome.downloads.download(
-    { url: dataUrl, filename: baseName, saveAs: true },
-    (downloadId) => {
-      if (chrome.runtime.lastError || downloadId == null) {
-        console.error("[rentracks-scraper] download failed:", chrome.runtime.lastError);
-        flashBadge(tabId, "ERR", "#c0392b");
-        return;
+    chrome.downloads.download(
+      { url: dataUrl, filename, saveAs },
+      (downloadId) => {
+        if (chrome.runtime.lastError || downloadId == null) {
+          console.error("[rentracks-scraper] download failed:", chrome.runtime.lastError);
+          flashBadge(tabId, "ERR", "#c0392b");
+          return;
+        }
+        chrome.action.setBadgeText({ text: "OK", tabId });
+        setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
       }
-      chrome.action.setBadgeText({ text: "OK", tabId });
-      setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
-    }
-  );
+    );
+  });
 }

@@ -46,28 +46,31 @@
     const { debugMode: debugModeRaw } = await chrome.storage.local.get(["debugMode"]);
     const debugMode = !!debugModeRaw;
     log("start", debugMode ? "(debug mode)" : "");
+    await setScrapeStatus({ inProgress: true, phase: "starting" });
 
     // === 0. 対象ページかチェック ===
     if (!/\/manage\/bill_index/.test(location.pathname)) {
       throw new Error("対象ページではありません。bill_index で検索を実行してから起動してください。");
     }
 
-    // === 1. ページサイズ確認 ===
+    // === 1. ページサイズ自動切替 ===
+    // pageSize が 50 でなければ、フォームを fetch で POST して
+    // server-side session を 50 に更新し、応答 HTML を1ページ目として使う。
+    // (debugMode のときは1件しか取らないので切替不要)
+    // 100 にしない理由: server が 100 件レンダリングで 504 を返しやすいため、
+    // 総時間と安定性のバランスで 50 を採用。
+    let firstDoc = document;
     const pageSizeSelect = document.querySelector('select[name="idPageSize"]');
-    if (pageSizeSelect && pageSizeSelect.value !== "100") {
-      const ok = confirm(
-        `現在のページサイズは ${pageSizeSelect.value} 件です。\n` +
-        `効率のため「100件表示」に切り替えてから再度実行することを推奨します。\n\n` +
-        `このまま続行しますか？`
-      );
-      if (!ok) {
-        sendProgress("");
-        return;
-      }
+    if (!debugMode && pageSizeSelect && pageSizeSelect.value !== "50") {
+      log(`page size = ${pageSizeSelect.value}, switching to 50 via fetch`);
+      sendProgress("切替");
+      await setScrapeStatus({ inProgress: true, phase: "switching" });
+      firstDoc = await switchToPageSize50(pageSizeSelect);
+      log("page size switched to 50");
     }
 
     // === 2. 1ページ目をパース ===
-    const firstCards = document.querySelectorAll("table.advtable2");
+    const firstCards = firstDoc.querySelectorAll("table.advtable2");
     if (firstCards.length === 0) {
       throw new Error("結果カード(.advtable2)が見つかりません。検索を実行してから拡張機能を起動してください。");
     }
@@ -89,12 +92,18 @@
       }
 
       // === 3. ページャ解析 ===
-      const pager = analyzePager(document);
+      const pager = analyzePager(firstDoc);
       log(`first page parsed. cards=${firstCards.length}, totalPages=${pager.totalPages}`);
 
       // === 4. 2ページ目以降を fetch ===
       for (let p = 2; p <= pager.totalPages; p++) {
         sendProgress(`${p}/${pager.totalPages}`);
+        await setScrapeStatus({
+          inProgress: true,
+          phase: "fetching",
+          current: p,
+          total: pager.totalPages,
+        });
         const url = pager.urlFor(p);
         const html = await fetchHtml(url);
         const doc = new DOMParser().parseFromString(html, "text/html");
@@ -131,6 +140,7 @@
 
     // === 7. background へ送信 ===
     log(`done. rows=${allRows.length}, cols=${columns.length}`);
+    await setScrapeStatus({ inProgress: false, phase: "done" });
     chrome.runtime.sendMessage({
       type: "DOWNLOAD_CSV",
       csv,
@@ -138,6 +148,11 @@
     });
   } catch (e) {
     console.error("[rentracks-scraper]", e);
+    await setScrapeStatus({
+      inProgress: false,
+      phase: "error",
+      errorMessage: String(e?.message || e),
+    });
     chrome.runtime.sendMessage({ type: "ERROR", error: String(e?.message || e) });
     alert(`[Rentracks 一覧取得] エラー: ${e?.message || e}`);
   }
@@ -270,15 +285,67 @@
     );
   }
 
+  // フォームを fetch で POST して idPageSize を 50 に切り替え、
+  // 応答 HTML を Document として返す。サーバ session も同時に更新される。
+  async function switchToPageSize50(pageSizeSelect) {
+    const form = pageSizeSelect.closest("form");
+    if (!form) throw new Error("idPageSize の親フォームが見つかりません");
+
+    const fd = new FormData(form);
+    fd.set("idPageSize", "50");
+    fd.set("idButton1", "検索"); // 検索ボタン送信を再現
+    const body = new URLSearchParams(fd);
+
+    const res = await fetch(form.action || location.href, {
+      method: (form.method || "POST").toUpperCase(),
+      credentials: "include",
+      headers: { Accept: "text/html" },
+      body,
+    });
+    if (!res.ok) {
+      throw new Error(`ページサイズ切替リクエストが失敗: HTTP ${res.status}`);
+    }
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    if (isLoginPage(doc)) {
+      throw new Error("セッションが切れた可能性があります。再ログインしてやり直してください。");
+    }
+    const newSelect = doc.querySelector('select[name="idPageSize"]');
+    if (newSelect && newSelect.value !== "50") {
+      throw new Error("ページサイズの切替がサーバ側で反映されませんでした");
+    }
+    return doc;
+  }
+
   // ============ ネットワーク・ユーティリティ ============
 
   async function fetchHtml(url) {
-    const res = await fetch(url, {
-      credentials: "include",
-      headers: { Accept: "text/html" },
-    });
-    if (!res.ok) throw new Error(`fetch failed: ${res.status} ${url}`);
-    return await res.text();
+    // 5xx エラーやネットワーク失敗は一時的なケースが多いので、最大3回まで指数バックオフでリトライ。
+    // 4xx (404/401/403 等) は永続的失敗なので即 throw。
+    const maxAttempts = 3;
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(url, {
+          credentials: "include",
+          headers: { Accept: "text/html" },
+        });
+        if (res.ok) return await res.text();
+        const err = new Error(`fetch failed: ${res.status} ${url}`);
+        err.status = res.status;
+        throw err;
+      } catch (e) {
+        lastError = e;
+        const isTransient =
+          (typeof e.status === "number" && e.status >= 500) ||
+          typeof e.status !== "number";
+        if (!isTransient || attempt >= maxAttempts) throw e;
+        log(`fetch retry ${attempt + 1}/${maxAttempts} for ${url}: ${e.message}`);
+        await sleep(1000 * attempt); // 1s, 2s
+      }
+    }
+    throw lastError;
   }
 
   function toCSV(rows) {
@@ -309,6 +376,15 @@
 
   function sendProgress(text) {
     chrome.runtime.sendMessage({ type: "PROGRESS", text });
+  }
+
+  async function setScrapeStatus(status) {
+    try {
+      await chrome.storage.session.set({ scrapeStatus: status });
+    } catch (e) {
+      // 進捗表示は副次機能、本体処理は継続させる
+      console.warn("[rentracks-scraper] setScrapeStatus failed:", e);
+    }
   }
 
   function sleep(ms) {
