@@ -70,9 +70,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
-  if (msg.type === "DOWNLOAD_CSV") {
-    const baseName = msg.filename || "rentracks.csv";
-    saveCsv(msg.csv, baseName, tabId);
+  if (msg.type === "OUTPUT_RESULT") {
+    handleOutputResult(msg, tabId);
     sendResponse({ ok: true });
     return true;
   }
@@ -92,33 +91,103 @@ async function flashBadge(tabId, text, color) {
   setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2500);
 }
 
+// 出力先(CSV / スプシ / 両方)に応じて分岐実行する。
+// content.js は writing phase を立てて待つので、ここで最終的に done/error をセットする。
+async function handleOutputResult(msg, tabId) {
+  const { outputMode = "csv" } = await chrome.storage.local.get(["outputMode"]);
+  const wantCsv = outputMode === "csv" || outputMode === "both";
+  const wantSheets = outputMode === "sheets" || outputMode === "both";
+
+  const results = [];
+  if (wantCsv) {
+    results.push(await saveCsv(msg.csv, msg.filename || "rentracks.csv", tabId));
+  }
+  if (wantSheets) {
+    results.push(
+      await postToSheets(msg.columns || [], msg.rows || [], msg.timestamp, tabId)
+    );
+  }
+
+  const allOk = results.length > 0 && results.every((r) => r.ok);
+  const firstError = results.find((r) => !r.ok);
+  try {
+    await chrome.storage.session.set({
+      scrapeStatus: allOk
+        ? { inProgress: false, phase: "done" }
+        : { inProgress: false, phase: "error", errorMessage: firstError?.error || "(不明)" },
+    });
+  } catch (e) {
+    console.warn("[rentracks-scraper] setScrapeStatus from bg failed:", e);
+  }
+}
+
 function saveCsv(csv, baseName, tabId) {
   // BOM 付き UTF-8 で保存する
   const csvWithBom = "﻿" + csv;
 
   // 常にダイアログ無しで ~/Downloads/ 配下に直接保存(同名は Chrome が連番付与)。
   // saveSubfolder 設定があれば ~/Downloads/<saveSubfolder>/<baseName>、未設定なら ~/Downloads/<baseName>。
-  chrome.storage.local.get(["saveSubfolder"], ({ saveSubfolder }) => {
-    const subfolder = (saveSubfolder || "").trim();
-    const filename = subfolder ? `${subfolder}/${baseName}` : baseName;
-    const dataUrl =
-      "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["saveSubfolder"], ({ saveSubfolder }) => {
+      const subfolder = (saveSubfolder || "").trim();
+      const filename = subfolder ? `${subfolder}/${baseName}` : baseName;
+      const dataUrl =
+        "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
 
-    chrome.downloads.download(
-      { url: dataUrl, filename, saveAs: false },
-      (downloadId) => {
-        if (chrome.runtime.lastError || downloadId == null) {
-          console.error("[rentracks-scraper] download failed:", chrome.runtime.lastError);
-          flashBadge(tabId, "ERR", "#c0392b");
-          notifyIfScheduled("error", "CSV のダウンロードに失敗しました");
-          return;
+      chrome.downloads.download(
+        { url: dataUrl, filename, saveAs: false },
+        (downloadId) => {
+          if (chrome.runtime.lastError || downloadId == null) {
+            console.error("[rentracks-scraper] download failed:", chrome.runtime.lastError);
+            flashBadge(tabId, "ERR", "#c0392b");
+            notifyIfScheduled("error", "CSV のダウンロードに失敗しました");
+            resolve({ ok: false, error: "CSV ダウンロード失敗" });
+            return;
+          }
+          chrome.action.setBadgeText({ text: "OK", tabId });
+          setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
+          notifyIfScheduled("ok", `CSV を保存しました: ${filename}`);
+          resolve({ ok: true });
         }
-        chrome.action.setBadgeText({ text: "OK", tabId });
-        setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
-        notifyIfScheduled("ok", `CSV を保存しました: ${filename}`);
-      }
-    );
+      );
+    });
   });
+}
+
+// Apps Script Web App に JSON を POST してスプシ追記する。
+// 失敗時はエラー通知 + ERR バッジを出して { ok: false, error } を返す。
+async function postToSheets(columns, rows, timestamp, tabId) {
+  const { sheetsWebAppUrl } = await chrome.storage.local.get(["sheetsWebAppUrl"]);
+  if (!sheetsWebAppUrl) {
+    flashBadge(tabId, "ERR", "#c0392b");
+    notifyIfScheduled("error", "スプシ URL が未設定です(設定画面で入力してください)");
+    return { ok: false, error: "スプシ URL 未設定" };
+  }
+  try {
+    const res = await fetch(sheetsWebAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns, rows, timestamp: timestamp || Date.now() }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      throw new Error("レスポンスが JSON ではありません");
+    }
+    if (result.ok === false) throw new Error(result.error || "GAS error");
+    chrome.action.setBadgeText({ text: "OK", tabId });
+    setTimeout(() => chrome.action.setBadgeText({ text: "", tabId }), 2000);
+    notifyIfScheduled("ok", `スプシに ${rows.length} 行追記しました`);
+    return { ok: true };
+  } catch (e) {
+    console.error("[rentracks-scraper] sheets failed:", e);
+    flashBadge(tabId, "ERR", "#c0392b");
+    notifyIfScheduled("error", `スプシ送信失敗: ${e.message}`);
+    return { ok: false, error: `スプシ送信失敗: ${e.message}` };
+  }
 }
 
 // ============ スケジュール実行 ============

@@ -140,11 +140,15 @@
 
     // === 7. background へ送信 ===
     log(`done. rows=${allRows.length}, cols=${columns.length}`);
-    await setScrapeStatus({ inProgress: false, phase: "done" });
+    await setScrapeStatus({ inProgress: true, phase: "writing" });
+    const rowsArr = allRows.map((r) => columns.map((c) => r[c] ?? ""));
     chrome.runtime.sendMessage({
-      type: "DOWNLOAD_CSV",
+      type: "OUTPUT_RESULT",
       csv,
       filename: makeFilename(debugMode),
+      columns,
+      rows: rowsArr,
+      timestamp: Date.now(),
     });
   } catch (e) {
     console.error("[rentracks-scraper]", e);

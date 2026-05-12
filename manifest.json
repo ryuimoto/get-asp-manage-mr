@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "description": "manage.rentracks.jp の検索結果を全ページ巡回して CSV ダウンロード",
   "permissions": ["activeTab", "scripting", "downloads", "storage", "alarms", "notifications"],
-  "host_permissions": ["https://manage.rentracks.jp/*"],
+  "host_permissions": [
+    "https://manage.rentracks.jp/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
   "action": {
     "default_title": "Rentracks 案件一覧を CSV でダウンロード",
     "default_popup": "popup.html",

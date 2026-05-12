@@ -91,6 +91,33 @@
     }
     .status.ok { color: #27ae60; }
     .status.err { color: #c0392b; }
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .radio-group label {
+      cursor: pointer;
+      user-select: none;
+    }
+    pre.gas-template {
+      background: #f4f4f4;
+      padding: 10px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      overflow-x: auto;
+      white-space: pre;
+      margin: 8px 0;
+    }
+    .help ol {
+      margin: 4px 0 8px 18px;
+      padding: 0;
+    }
+    .help ol li {
+      margin-bottom: 2px;
+    }
   </style>
 </head>
 <body>
@@ -136,6 +163,59 @@
       ・bill_index タブがなければ自動でバックグラウンドで開きます<br>
       ・OS の通知許可が必要です。macOS なら「システム設定 → 通知 → Google Chrome」で確認<br>
       ・<strong>デバッグモードが ON のままだと自動実行も 1 件しか取りません</strong>(popup でチェックを外しておく)
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="field-label">Google スプシ連携</div>
+
+    <div style="margin-bottom: 10px;">
+      <div style="font-size: 13px; margin-bottom: 6px;">出力先</div>
+      <div class="radio-group">
+        <label><input type="radio" name="outputMode" value="csv"> CSV のみダウンロード(従来通り)</label>
+        <label><input type="radio" name="outputMode" value="sheets"> スプシのみに追記</label>
+        <label><input type="radio" name="outputMode" value="both"> 両方(CSV ダウンロード + スプシ追記)</label>
+      </div>
+    </div>
+
+    <div style="font-size: 13px; margin-bottom: 6px;">Apps Script Web App URL</div>
+    <input type="url" id="sheetsWebAppUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+    <div class="actions">
+      <button id="sheetsUrlSaveBtn">保存</button>
+      <button class="secondary" id="sheetsTestBtn">テスト送信</button>
+      <span class="status" id="sheetsStatus"></span>
+    </div>
+
+    <div class="help">
+      <strong>GAS Web App デプロイ手順</strong>:
+      <ol>
+        <li>記録したいスプレッドシートを開く → メニュー「拡張機能 → Apps Script」</li>
+        <li>Code.gs に下記コードを貼る</li>
+        <li>右上「デプロイ → 新しいデプロイ → 種類: ウェブアプリ」</li>
+        <li>実行ユーザー「自分」、アクセス権「全員」でデプロイ → 表示された URL を上記欄に貼る</li>
+      </ol>
+      <pre class="gas-template">function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("rentracks") || ss.insertSheet("rentracks");
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["取得日時", ...data.columns]);
+  }
+  const ts = new Date(data.timestamp);
+  const newRows = data.rows.map(r =&gt; [ts, ...r]);
+  if (newRows.length &gt; 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length)
+      .setValues(newRows);
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, written: newRows.length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+      <strong>注</strong>:<br>
+      ・URL は「アクセス権: 全員」のため、知っている人なら誰でも書き込み可能。秘密扱いに<br>
+      ・スプシの 1 列目に「取得日時」が自動で入る。2 列目以降は CSV と同じ列順<br>
+      ・ヘッダは初回のみ書き込み。同じシート(タブ名 rentracks)に追記される<br>
+      ・出力先「スプシのみ」/「両方」で URL が未設定だとエラー通知が出る
     </div>
   </div>
 

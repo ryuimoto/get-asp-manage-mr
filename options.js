@@ -5,6 +5,7 @@
 //   - 空欄  → saveAs:true で毎回保存ダイアログ
 
 const FORBIDDEN_CHARS_RE = /[\\:*?"<>|]/;
+const SHEETS_URL_RE = /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(\?.*)?$/;
 
 document.addEventListener("DOMContentLoaded", async () => {
   const input = document.getElementById("saveSubfolder");
@@ -71,6 +72,80 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateSchedulePreview();
     setScheduleStatus("保存しました", "ok");
   });
+
+  // === Google スプシ連携 ===
+  const sheetsUrlInput = document.getElementById("sheetsWebAppUrl");
+  const sheetsUrlSaveBtn = document.getElementById("sheetsUrlSaveBtn");
+  const sheetsTestBtn = document.getElementById("sheetsTestBtn");
+  const sheetsStatus = document.getElementById("sheetsStatus");
+  const outputModeRadios = document.querySelectorAll('input[name="outputMode"]');
+
+  const { outputMode, sheetsWebAppUrl } = await chrome.storage.local.get([
+    "outputMode",
+    "sheetsWebAppUrl",
+  ]);
+  const currentMode = outputMode || "csv";
+  for (const r of outputModeRadios) {
+    if (r.value === currentMode) r.checked = true;
+  }
+  sheetsUrlInput.value = sheetsWebAppUrl || "";
+
+  for (const r of outputModeRadios) {
+    r.addEventListener("change", async () => {
+      if (r.checked) {
+        await chrome.storage.local.set({ outputMode: r.value });
+      }
+    });
+  }
+
+  sheetsUrlInput.addEventListener("input", () => setSheetsStatus("", ""));
+
+  sheetsUrlSaveBtn.addEventListener("click", async () => {
+    const v = sheetsUrlInput.value.trim();
+    if (v && !SHEETS_URL_RE.test(v)) {
+      setSheetsStatus("URL 形式が不正です(https://script.google.com/macros/s/.../exec)", "err");
+      return;
+    }
+    await chrome.storage.local.set({ sheetsWebAppUrl: v });
+    setSheetsStatus(v ? "保存しました" : "クリアしました", "ok");
+  });
+
+  sheetsTestBtn.addEventListener("click", async () => {
+    const v = sheetsUrlInput.value.trim();
+    if (!v || !SHEETS_URL_RE.test(v)) {
+      setSheetsStatus("URL が未保存または不正です", "err");
+      return;
+    }
+    setSheetsStatus("送信中…", "");
+    try {
+      const res = await fetch(v, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          columns: ["test"],
+          rows: [["ok"]],
+          timestamp: Date.now(),
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        throw new Error("レスポンスが JSON ではありません: " + text.slice(0, 80));
+      }
+      if (result.ok === false) throw new Error(result.error || "GAS error");
+      setSheetsStatus(`送信成功(written=${result.written ?? "?"})`, "ok");
+    } catch (e) {
+      setSheetsStatus(`送信失敗: ${e.message}`, "err");
+    }
+  });
+
+  function setSheetsStatus(text, kind) {
+    sheetsStatus.textContent = text;
+    sheetsStatus.className = "status" + (kind ? ` ${kind}` : "");
+  }
 
   function updateSchedulePreview() {
     if (!scheduleEnabled.checked) {

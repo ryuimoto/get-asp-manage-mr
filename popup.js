@@ -143,6 +143,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           progressDetail.textContent = "";
         }
         break;
+      case "writing":
+        progressStatus.textContent = "出力中…";
+        progressBar.removeAttribute("value");
+        progressDetail.textContent = "";
+        break;
       case "done":
         progressStatus.textContent = "完了!";
         progressStatus.classList.add("done");
