@@ -222,7 +222,11 @@
     if (!dl) return "";
     const dts = dl.querySelectorAll("dt");
     for (const dt of dts) {
-      if (collapseSpaces(dt.textContent) === key) {
+      // dt が <a>ラベル</a><a>[？]</a> 構造のケース(承認率/CVR/CTR/EPC など)に対応するため、
+      // 最初の <a> のテキストを優先してラベル比較する。a が無ければ dt 全体を見る。
+      const firstA = dt.querySelector("a");
+      const label = collapseSpaces(firstA ? firstA.textContent : dt.textContent);
+      if (label === key) {
         const dd = dt.nextElementSibling;
         if (dd) {
           const a = dd.querySelector("a");
