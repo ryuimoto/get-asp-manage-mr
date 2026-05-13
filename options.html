@@ -198,23 +198,52 @@
   const data = JSON.parse(e.postData.contents);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("rentracks") || ss.insertSheet("rentracks");
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["取得日時", ...data.columns]);
-  }
+  const headers = ["取得日時", ...data.columns];
+  if (sheet.getLastRow() === 0) sheet.appendRow(headers);
+
+  const idColInData = data.columns.indexOf("プロダクトID");
+  if (idColInData &lt; 0) throw new Error("columns に プロダクトID がありません");
+  const idColInSheet0 = idColInData + 1;
+  const numCols = headers.length;
   const ts = new Date(data.timestamp);
-  const newRows = data.rows.map(r =&gt; [ts, ...r]);
-  if (newRows.length &gt; 0) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length)
-      .setValues(newRows);
+
+  const lastRow = sheet.getLastRow();
+  const existing = lastRow &gt;= 2
+    ? sheet.getRange(2, 1, lastRow - 1, numCols).getValues()
+    : [];
+  const idToIdx = {};
+  for (let i = 0; i &lt; existing.length; i++) {
+    const k = String(existing[i][idColInSheet0] || "");
+    if (k) idToIdx[k] = i;
+  }
+
+  const appends = [];
+  let updated = 0;
+  for (const row of data.rows) {
+    const id = String(row[idColInData] || "");
+    const full = [ts, ...row];
+    if (id &amp;&amp; idToIdx[id] !== undefined) {
+      existing[idToIdx[id]] = full;
+      updated++;
+    } else {
+      appends.push(full);
+    }
+  }
+  if (existing.length &gt; 0) {
+    sheet.getRange(2, 1, existing.length, numCols).setValues(existing);
+  }
+  if (appends.length &gt; 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appends.length, numCols)
+      .setValues(appends);
   }
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, written: newRows.length }))
+    .createTextOutput(JSON.stringify({ ok: true, written: appends.length, updated }))
     .setMimeType(ContentService.MimeType.JSON);
 }</pre>
       <strong>注</strong>:<br>
       ・URL は「アクセス権: 全員」のため、知っている人なら誰でも書き込み可能。秘密扱いに<br>
       ・スプシの 1 列目に「取得日時」が自動で入る。2 列目以降は CSV と同じ列順<br>
-      ・ヘッダは初回のみ書き込み。同じシート(タブ名 rentracks)に追記される<br>
+      ・<strong>上書きモード</strong>: 既に同じ「プロダクトID」の行があれば最新値で上書き、新規だけ末尾追加<br>
       ・出力先「スプシのみ」/「両方」で URL が未設定だとエラー通知が出る
     </div>
   </div>
